@@ -3,7 +3,7 @@ import socket
 from brainsight.data_receiving import data_handling
 
 
-def main():
+def stream_data():
     # ip = "192.168.68.111"
     port = 5000
     ip = get_ip_address()  # IP to laptop
@@ -17,4 +17,4 @@ def get_ip_address():
 
 
 if __name__ == "__main__":
-    main()
+    stream_data()

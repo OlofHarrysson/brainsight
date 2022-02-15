@@ -1,6 +1,7 @@
 import os
 import traceback
-from pathlib import Path
+from dataclasses import dataclass
+from datetime import datetime
 
 import pandas as pd
 from pythonosc import dispatcher, osc_server
@@ -21,47 +22,20 @@ def connect_data_steam(ip, port):
     for routing_path in routing_funcs.keys():
         dispatcher_.map(routing_path, data_handler)
 
-    # server = osc_server.ThreadingOSCUDPServer((ip, port), dispatcher_) # Race conditions
-    server = osc_server.BlockingOSCUDPServer((ip, port), dispatcher_)
+    server = osc_server.ThreadingOSCUDPServer((ip, port), dispatcher_)
     print(f"Listening on IP {ip} UDP port {port}")
     server.serve_forever()
 
 
 class DataHandler:
-    # TODO: Try to stream directly to dashboard
     def __init__(self, routing_funcs):
+        self.df = pd.DataFrame()
         self.routing_funcs = routing_funcs
-        self.index_file = Path("output") / "meta.csv"
-        self.index_file.unlink(missing_ok=True)
-        self.nbr_warmup_items = 50
-        self.columns = set()
-        self.data_header = pd.DataFrame([], columns=list(self.columns))
-
-    def create_header(self, data_item):
-        # Gather the data columns for the first iterations
-
-        if self.columns:  # If header already been created
-            return True
-
-        self.nbr_warmup_items -= 1
-        data_item = pd.DataFrame.from_dict([data_item])
-        self.data_header = pd.concat([self.data_header, data_item], ignore_index=True)
-
-        if self.nbr_warmup_items == 0:
-            self.columns = set(self.data_header.columns)
-            self.data_header = pd.DataFrame([], columns=list(self.columns))
-            self.data_header = self.data_header.sort_index(axis=1)
-            col = self.data_header.pop("timestamp")
-            self.data_header.insert(0, col.name, col)
-            self.data_header.to_csv(self.index_file, mode="a", index=False, header=True)
-
-        return self.nbr_warmup_items == 0
 
     def update_data(self, data_item):
-        data_item = pd.DataFrame.from_dict([data_item])
-        data_row = pd.concat([self.data_header, data_item], ignore_index=True)
-        data_row.to_csv(self.index_file, mode="a", index=False, header=False)
-        # print(data_item)
+        data = pd.DataFrame.from_dict([data_item])
+        self.df = pd.concat([self.df, data], ignore_index=True)
+        print(data_item)
 
     def __call__(self, address: str, *args, **kwargs):
         timestamp = pd.Timestamp.now()
@@ -69,8 +43,7 @@ class DataHandler:
         try:
             data = func(*args, **kwargs)
             data["timestamp"] = timestamp
-            if self.create_header(data):
-                self.update_data(data)
+            self.update_data(data)
             return data
         except Exception as err:
             traceback.print_exc()
